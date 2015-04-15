@@ -1,22 +1,50 @@
-'''
-Created on 11-Apr-2015
-
-@author: Ritesh
-'''
-
 import MySQLdb
 import math
 import numpy
 import scipy
 import gensim
+import nltk.stem
+import time
 
 
-db = MySQLdb.connect("localhost","root","ritesh","flickr_data")
+db = MySQLdb.connect("localhost","root","ritesh","flickr_data",use_unicode=True)
 
 allTags = {}
 cursor = db.cursor()
 sentences = []
 #cursor = []
+
+def timing(f):
+    def wrap(*args):
+        time1 = time.time()
+        ret = f(*args)
+        time2 = time.time()
+        print '%s function took %0.3f ms' % (f.func_name, (time2-time1)*1000.0)
+        return ret
+    return wrap
+
+
+st = nltk.stem.porter.PorterStemmer()
+#lancaster = nltk.stem.lancaster.LancasterStemmer()
+
+@timing
+def fillStemmedTags():
+    query = "select * from author_photos_tags"
+    cursor.execute(query)
+    res = cursor.fetchall()
+    for row in res:
+        val = row[2][1:-1]
+        l = val.split(",")
+        for i in range(len(l)):
+            l[i] = st.stem(l[i].strip())
+        sentences.append(l)
+        if allTags.has_key(row[0])==False:
+            allTags[row[0]] = l
+        else:
+            for tag in l:
+                if tag not in allTags[row[0]]:
+                    allTags[row[0]].append(tag)
+    print "Total Sentences", len(sentences)
 
 def fillTags():
     query = "select * from author_photos_tags"
@@ -61,12 +89,13 @@ def findJaccardSim():
             myfile.write(l[0]+" "+l[1]+" "+str(sim)+"\n")
             myfile.flush()
 
-def findCosineSimilarity():
-    print "Cosine"
+def findCosineSimilarity(model):
+   ''' print "Cosine"
     model = gensim.models.Word2Vec(sentences, workers=4, min_count=1)
     print "Training Done"
-    
-    myfile = open("C:/Users/Ritesh/Desktop/LiveJournalDatasets/FlickrDataset/data_stats/tagCosine.txt", "w")
+    #now takes model instead
+    '''
+    myfile = open("C:/Users/Ritesh/Desktop/LiveJournalDatasets/FlickrDataset/data_stats/tagCosine_bigram_stemmed_Phrases.txt", "w")
     lc = 1
     with open("C:/Users/Ritesh/Desktop/LiveJournalDatasets/FlickrDataset/data_stats/authorEdges.csv", "r") as f:
         for line in f:
@@ -86,9 +115,26 @@ def findCosineSimilarity():
             myfile.flush()
     
 
+def learnModel(sentences,saveas):
+    model = gensim.models.Word2Vec(sentences, workers=4, min_count=1)
+    model.save("../Models/"+saveas)
+    return model
 
-fillTags()
-findCosineSimilarity()
-#findJaccardSim()       
-            
 
+#fillTags()
+'''
+#for learning model based on stemmed bigrams
+
+fillStemmedTags()
+
+#bigram_transformer_stemmed = gensim.models.Phrases(sentences)
+#bigram_transformer_stemmed.save("/home/prateek/SNA/Social-Network-Analysis/Flickr/Models/bigram_transformed_stemmmed_phrases")
+
+#use saved phrases instead
+bigram_transformer_stemmed = gensim.models.Phrases.load("/home/prateek/SNA/Social-Network-Analysis/Flickr/Models/bigram_transformed_stemmmed_phrases")
+model=learnModel(bigram_transformer_stemmed[sentences] ,Word2VecForHashtags_StemmedPhrases)
+'''
+
+#findJaccardSim()
+model = gensim.models.Word2Vec.load("../Models/Word2VecForHashtags_StemmedPhrases")
+findCosineSimilarity(model)
